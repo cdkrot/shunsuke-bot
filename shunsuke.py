@@ -56,14 +56,12 @@ def tickle(bot, update, job_queue):
 
     set_state(user, {"state": "tickle_read_message"})
     bot.sendMessage(chat_id=user, text="Now send me the message")
-    #add_tickle(bot, user, "Tickle!", timestamp() + 20, job_queue)
-    #bot.sendMessage(chat_id=user, text="OK")
 
 def tickle_read_message(bot, update, job_queue, state):
     msg = update.message
     user = update.message.chat_id
     
-    if hasattr(msg, "text"):
+    if msg.text != None:
         set_state(user, {"state": "tickle_read_time", "msg": msg.text})
         bot.sendMessage(chat_id=user, text="Now send the time")
 
@@ -71,7 +69,7 @@ def tickle_read_time(bot, update, job_queue, state):
     msg = update.message
     user = update.message.chat_id
     
-    if hasattr(msg, "text"):
+    if msg.text != None:
         tm = parse_time(msg.text)
 
         if tm != None:
