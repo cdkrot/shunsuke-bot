@@ -7,6 +7,7 @@ import sqlite3
 import datetime
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
 
+import time
 import logging
 
 logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
@@ -15,15 +16,26 @@ logger = logging.getLogger(__name__)
 def error(bot, update, error):
     logger.warning('Update "%s" caused error "%s"', update, error)
 
-
 def timestamp():
-    import time
     return int(time.time())
 
 def connect():
     return sqlite3.connect("instance/data.db")
 
 def parse_time(tm):
+    try:
+        date = time.strptime(tm, "%d %b %Y %H:%M")
+        return time.mktime(date)
+    except:
+        pass
+    
+    try:
+        date = time.strptime(tm, "%d %b %Y")
+        return time.mktime(date)
+    except:
+        pass
+
+    
     toks = tm.split(" ")
     if len(toks) != 2:
         return None
@@ -38,6 +50,8 @@ def parse_time(tm):
         return timestamp() + cnt * datetime.timedelta(days=365).total_seconds()
     if toks[1].lower() in ["mon", "month", "months"]:
         return timestamp() + cnt * datetime.timedelta(days=30).total_seconds()
+    if toks[1].lower() in ["d", "day", "days"]:
+        return timestamp() + cnt * datetime.timedelta(days=1).total_seconds()
     if toks[1].lower() in ["h", "hr", "hour", "hours"]:
         return timestamp() + cnt * 3600
     if toks[1].lower() in ["m", "min", "mins"]:
@@ -63,7 +77,7 @@ def tickle_read_message(bot, update, job_queue, state):
     
     if msg.text != None:
         set_state(user, {"state": "tickle_read_time", "msg": msg.text})
-        bot.sendMessage(chat_id=user, text="Now send the time")
+        bot.sendMessage(chat_id=user, text="Now send me the time (time delta or date and time)")
 
 def tickle_read_time(bot, update, job_queue, state):
     msg = update.message
@@ -139,6 +153,16 @@ def reload_database(bot, job):
         for (no,time,) in c.execute('''select id, time from tickle where time <= ?''', (tm,)):
             job.job_queue.run_once(print_tickle, time - timestamp(), no)
 
+
+def migchat(bot, update):
+    oldchatid = update.message.migrate_from_chat_id
+    newchatid = update.message.chat.id
+    
+    with connect() as db:
+        c = db.cursor()
+        c.execute('''update tickle set user = ? where user = ?''', (newchatid, oldchatid))
+        c.execute('''update users set user = ? where user = ?''', (newchatid, oldchatid))
+            
 def init():
     global cfg
     cfg = None
@@ -151,16 +175,17 @@ def init():
         (id integer primary key, time int not null, user int not null, message text not null)''')
 
         c.execute('''create table if not exists users
-        (user int primary key, state text)''')
-        
+        (user int primary key, state text)''')        
         
         db.commit()
 
     updater = Updater(token=cfg['TOKEN'])
+    
     updater.dispatcher.add_handler(CommandHandler('start', help_command))
     updater.dispatcher.add_handler(CommandHandler('help', help_command))
     updater.dispatcher.add_handler(CommandHandler('tickle', tickle, pass_job_queue=True))
     updater.dispatcher.add_handler(MessageHandler(None, text_handle, pass_job_queue=True))
+    dispatcher.add_handler(MessageHandler(Filters.status_update.migrate, migchat))
     updater.dispatcher.add_error_handler(error)
     
     bot = updater.bot
